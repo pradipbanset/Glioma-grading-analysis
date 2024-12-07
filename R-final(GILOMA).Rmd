@@ -1,0 +1,607 @@
+---
+title: "R final(GILOMA)"
+author: "Pradip Basnet"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+## loading the necessary packages
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(tidyverse)
+library(caret)
+library(readr)
+library(plotly)
+library(GGally)
+library(vcd)
+library(beeswarm)
+```
+
+
+```{r}
+data <- read_csv("TCGA_InfoWithGrade.csv")
+head(data)
+#view(data)
+```
+
+
+```{r}
+str(data)
+glimpse(data)
+```
+
+
+```{r}
+#view(data)
+summary(data)
+```
+
+checkig whether data has missing values or not
+
+```{r}
+sum(is.na(data))
+#view(data)
+```
+
+```{r}
+colSums(is.na(data))
+```
+```{r}
+# Binning the age column into categories
+data$Age_group <- cut(data$Age_at_diagnosis, breaks = c(0, 30, 50, 70, 100), labels = c("0-30", "30-50", "50-70", "70-100"))
+#view(data)
+```
+
+
+
+"Grade"            "Gender"           "Age_at_diagnosis" "Race"             "IDH1"             "TP53"             "ATRX"            
+ [8] "PTEN"             "EGFR"             "CIC"              "MUC16"            "PIK3CA"           "NF1"              "PIK3R1"          
+[15] "FUBP1"            "RB1"              "NOTCH1"           "BCOR"             "CSMD3"            "SMARCA4"          "GRIN2A"          
+[22] "IDH2"             "FAT4"             "PDGFRA"           "Age_group"        "mutation_count"  
+
+
+```{r}
+# Add a feature representing the total number of mutated genes
+data$mutation_count <- rowSums(data[, c("IDH1","TP53","ATRX","PTEN","EGFR","CIC","MUC16","PIK3CA","NF1","PIK3R1","FUBP1","RB1","NOTCH1","BCOR","CSMD3","SMARCA4","GRIN2A","IDH2","FAT4","PDGFRA")])
+data
+```
+
+
+```{r}
+# Convert Grade column: 0 to "LGG" and 1 to "GBM"
+data$Grade <- ifelse(data$Grade == 0, "LGG", "GBM")
+
+# Verify the changes
+table(data$Grade)  # Check the distribution of LGG and GBM in the Grade column
+#view(data)
+```
+
+## convert the gender columns into male and female 
+
+```{r}
+# Check unique values in a specific column
+unique_values <- unique(data$Race)
+print(unique_values)
+
+table(data$Race)
+```
+```{r}
+# Modify the Race column based on the provided categories
+data$Race <- case_when(
+  data$Race == 0 ~ "White",
+  data$Race == 1 ~ "Asian",
+  data$Race == 2 ~ "Black / African American",
+  data$Race == 3 ~ "Not Reported",
+  TRUE ~ "Other"  # Add this to handle any unexpected values
+)
+
+# View the counts of each race
+table(data$Race)
+
+```
+
+
+```{r}
+data$Gender <- ifelse(data$Gender == 0, "Male", "Female")
+table(data$Gender)
+```
+
+
+```{r}
+# Check the number of missing values in the 'Age_at_diagnosis' column
+missing_values <- sum(is.na(data$Race))
+print(missing_values)
+
+```
+
+
+```{r}
+# Round the Age_at_diagnosis column to the nearest whole number
+data$Age_at_diagnosis <- round(data$Age_at_diagnosis)
+
+# Verify the changes
+head(data$Age_at_diagnosis)
+
+```
+
+
+
+```{r}
+colnames(data)
+#view(data)
+```
+
+
+```{r}
+# Assuming your cleaned data is in a data frame called 'cleaned_data'
+write.csv(data, 'cleaned_data.csv', row.names = FALSE)
+
+```
+
+
+## Descriptive Analysis
+
+```{r}
+# Summarize dataset to understand basic characteristics
+summary(data)
+#view(data)
+```
+
+
+```{r}
+# Select mutation columns
+mutation_columns <- c('IDH1', 'TP53', 'ATRX', 'PTEN', 'EGFR', 'CIC', 'MUC16', 
+                      'PIK3CA', 'NF1', 'PIK3R1', 'FUBP1', 'RB1', 'NOTCH1', 
+                      'BCOR', 'CSMD3', 'SMARCA4', 'GRIN2A', 'IDH2', 'FAT4', 
+                      'PDGFRA')
+
+# Summing mutations across all individuals for each gene
+mutation_frequencies <- data %>% 
+  select(all_of(mutation_columns)) %>%
+  summarise_all(sum) %>%
+  gather(Gene, Frequency)
+
+# Plot bar plot
+p <- ggplot(mutation_frequencies, aes(x = reorder(Gene, -Frequency), y = Frequency)) +
+  geom_bar(stat="identity", fill="cornflowerblue") +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title = "Mutation Frequency by Gene", x = "Gene", y = "Number of Mutations")
+ggplotly(p)
+```
+
+
+
+
+
+
+```{r}
+# Calculate mutation count per individual
+data$mutation_count <- rowSums(data[mutation_columns])
+
+# Plot boxplot by Age Group
+ggplot(data, aes(x = Age_group, y = mutation_count)) +
+  geom_boxplot(fill="lightgreen") +
+  labs(title = "Mutation Count Distribution by Age Group", x = "Age Group", y = "Number of Mutations")
+
+```
+
+
+
+
+
+
+
+```{r}
+# Violin plot comparing mutation count distribution across Age Group
+p <- ggplot(data, aes(x = Age_group, y = mutation_count, fill = Age_group)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) +
+  labs(title = "Mutation Count Distribution by Age Group", x = "Age Group", y = "Mutation Count") +
+  theme_minimal()
+ggplotly(p)
+```
+
+
+
+```{r}
+# Density plot of mutation count across the entire dataset
+p <- ggplot(data, aes(x = mutation_count)) +
+  geom_density(fill="blue", alpha=0.5) +
+  labs(title = "Density Plot of Mutation Count", x = "Mutation Count", y = "Density") +
+  theme_minimal()
+ggplotly(p)
+```
+
+
+
+
+```{r}
+# Boxplot with jitter to show mutation count distribution across tumor grade
+p <- ggplot(data, aes(x = as.factor(Grade), y = mutation_count, color = Grade)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.2, size = 2, alpha = 0.5) +
+  labs(title = "Mutation Count by Tumor Grade", x = "Tumor Grade", y = "Mutation Count") +
+  theme_minimal()
+ggplotly(p)
+```
+
+
+
+```{r}
+# Improve plot appearance
+p <- ggplot(data, aes(x = mutation_count)) +
+  geom_histogram(binwidth = 1, fill="#3498db", color="#ecf0f1") + # Updated color scheme
+  facet_grid(Age_group ~ Gender) + # Facets by Age Group and Gender
+  labs(title = "Mutation Count Distribution by Age Group and Gender", 
+       x = "Mutation Count", 
+       y = "Frequency") +
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Arial", color = "#2c3e50"), # Set text family and color
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5), # Centered bold title
+    axis.title = element_text(size = 14, face = "bold"), # Bold axis titles
+    strip.text = element_text(size = 12, face = "bold"), # Bold facet labels
+    panel.grid.major = element_blank(), # Remove major grid lines
+    panel.grid.minor = element_blank(), # Remove minor grid lines
+    panel.background = element_rect(fill = "white", colour = "grey"), # White background with grey border
+    legend.position = "none" # Hide legend if not necessary
+  )
+
+# Convert to an interactive plot using ggplotly
+ggplotly(p)
+
+```
+
+
+
+
+
+```{r}
+# Create a mosaic plot for joint distribution of Tumor Grade and IDH1 Mutation
+mosaic(~Grade + IDH1, data = data, 
+       shade = TRUE, 
+       legend = TRUE, 
+       labeling_args = list(set_varnames = c(Grade = "Tumor Grade", IDH1 = "IDH1 Mutation")),
+       main = "Mosaic Plot: Tumor Grade vs IDH1 Mutation")
+
+```
+
+
+
+```{r}
+# Swarm plot for mutation count across tumor grade
+beeswarm(mutation_count ~ as.factor(Grade), data = data, 
+         pch = 16, col = rainbow(6), main = "Swarm Plot: Mutation Count by Tumor Grade", 
+         xlab = "Tumor Grade", ylab = "Mutation Count")
+```
+
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Simulated example data
+set.seed(123)
+data <- data.frame(
+  Tumor_Grade = factor(sample(c("LGG", "GBM"), 100, replace = TRUE)),
+  Mutation_Type = factor(sample(c("IDH1", "TP53", "ATRX"), 100, replace = TRUE)),
+  Mutation_Count = rnorm(100, mean = 10, sd = 3)
+)
+
+# Summarizing data to get mean mutation count for each combination
+interaction_data <- data %>%
+  group_by(Tumor_Grade, Mutation_Type) %>%
+  summarise(Mean_Mutation_Count = mean(Mutation_Count), .groups = 'drop')
+
+# Creating the interaction plot
+ggplot(interaction_data, aes(x = Tumor_Grade, y = Mean_Mutation_Count, color = Mutation_Type, group = Mutation_Type)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Interaction Plot", x = "Tumor Grade", y = "Mean Mutation Count", color = "Mutation Type")
+
+```
+
+
+
+
+```{r}
+# Group data by Grade and Mutation status
+mutation_by_grade <- data %>%
+  group_by(Grade) %>%
+  summarise_at(mutation_cols, ~ sum(!is.na(.)))
+
+# Convert data to long format for plotting
+mutation_by_grade_long <- mutation_by_grade %>%
+  gather(Mutation, Count, -Grade)
+
+# Stacked bar chart of mutations by tumor grade
+ggplot(mutation_by_grade_long, aes(fill=Mutation, y=Count, x=Grade)) +
+  geom_bar(position="stack", stat="identity") +
+  labs(title="Mutation Distribution by Tumor Grade", x="Tumor Grade", y="Count") +
+  theme_minimal()
+
+```
+
+
+```{r}
+mutation_cols <- names(data)[5:ncol(data)]
+
+# Count mutations by gender
+mutation_by_gender <- data %>%
+  group_by(Gender) %>%
+  summarise(across(all_of(mutation_cols), ~ sum(. == 1), .names = "count_{.col}"))  # Assuming mutations are encoded as 1
+
+# Convert to long format
+mutation_by_gender_long <- pivot_longer(mutation_by_gender,
+                                        cols = starts_with("count"),
+                                        names_to = "Mutation",
+                                        names_prefix = "count_",
+                                        values_to = "Count")
+
+# Plot
+ggplot(mutation_by_gender_long, aes(fill = Gender, y = Count, x = Mutation)) +
+  geom_bar(position = "dodge", stat = "identity") +
+  labs(title = "Mutation Prevalence by Gender", x = "Mutation", y = "Count") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+
+
+
+
+
+
+
+
+## Distribution of Clinical Variables
+
+```{r}
+# 2.1: Grade Distribution (Bar chart)
+p <- ggplot(data, aes(x = factor(Grade), fill = Grade)) +
+  geom_bar() +
+  labs(title = "Distribution of Grade", x = "Grade", y = "Count") +
+  theme_minimal() +
+  scale_fill_manual(values = c("cornflowerblue", "orange"))  +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplotly(p)
+
+```
+
+
+## # 2.2: Age at Diagnosis Distribution (Histogram)
+```{r}
+p <- ggplot(data, aes(x = Age_at_diagnosis)) +
+  geom_histogram(binwidth = 5, fill = "cornflowerblue", color = "white") +
+  labs(title = "Distribution of Age at Diagnosis", x = "Age at Diagnosis", y = "Count") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplotly(p)
+```
+
+
+```{r}
+p <- ggplot(data, aes(x = Age_group)) +
+  geom_bar(binwidth = 5, fill = "cornflowerblue", color = "white") +
+  labs(title = "Distribution of Age at Diagnosis", x = "Age Groups", y = "Count") +
+  theme_minimal()
+ggplotly(p)
+```
+
+## Gender Distribution (Pie chart) 
+
+```{r}
+# Calculate gender distribution with counts and percentages
+gender_dist <- data %>%
+  group_by(Gender) %>%
+  summarise(Count = n()) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+# Plot the pie chart
+ggplot(gender_dist, aes(x = "", y = Count, fill = Gender)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +
+  labs(title = "Distribution of Gender") +
+  theme_minimal() +
+  geom_text(aes(label = paste0(Count, " (", round(Percentage, 1), "%)")),
+            position = position_stack(vjust = 0.5)) +  # Place text in the middle of each pie slice
+  theme(axis.text.x = element_blank(),  # Remove x-axis labels
+        axis.ticks = element_blank(),   # Remove saxis ticks
+        plot.title = element_text(hjust = 0.5))  # Center the title
+
+```
+
+```{r}
+# First calculate the counts and percentages
+race_dist <- data %>%
+  group_by(Race) %>%
+  summarise(Count = n()) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+# Plot the bar chart with different colors and percentage labels on top of each bar
+p <- ggplot(race_dist, aes(x = factor(Race), y = Count)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(round(Percentage, 1), "%")), 
+            vjust = -0.5, size = 4) +  # Display percentage on top of the bars
+  labs(title = "Distribution of Race", x = "Race", y = "Count") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))  # Center the title
+
+# Convert ggplot to plotly for interactivity
+ggplotly(p)
+
+```
+
+
+## Mutational Landscape
+
+```{r}
+mutation_cols <- c("IDH1", "TP53", "ATRX", "PTEN", "EGFR", "CIC", "FUBP1", "RB1", "NOTCH1", "BCOR", "CSMD3", "SMARCA4", "GRIN2A", "IDH2", "FAT4", "PDGFRA")
+mutation_freq <- colSums(data[ , mutation_cols] == 1)
+
+mutation_df <- data.frame(Gene = names(mutation_freq), Frequency = mutation_freq)
+
+p <- ggplot(mutation_df, aes(x = reorder(Gene, -Frequency), y = Frequency)) +
+  geom_bar(stat = "identity", fill = "cornflowerblue") +
+  labs(title = "Frequency of Genetic Mutations", x = "Gene", y = "Frequency") +
+  theme_minimal() +
+   theme(plot.title = element_text(hjust = 0.5))
+  coord_flip()
+ggplotly(p)
+```
+
+## Co-mutation Analysis (IDH1 + TP53) ----> not sure grna ki nai vnera ailea lai....!!!
+
+## Feature Relationships
+
+```{r}
+#Relationship Between Age and Grade (Box plot)
+p <- ggplot(data, aes(x = factor(Grade), y = Age_at_diagnosis, fill = factor(Grade))) +
+  geom_boxplot() +
+  labs(title = "Age Distribution by Grade", x = "Grade", y = "Age at Diagnosis") +
+  theme_minimal()
+ggplotly(p)
+```
+
+## Relationship Between Gender and Grade (Stacked bar chart)
+
+```{r}
+p <- ggplot(data, aes(x = factor(Grade), fill = factor(Gender))) +
+  geom_bar(position = "fill") +
+  labs(title = "Distribution of Gender Across Grades", x = "Grade", y = "Proportion") +
+  theme_minimal()
+ggplotly(p)
+```
+
+
+
+
+
+## Relationship Between Mutation Count and Grade (Box plot)
+
+```{r}
+ggplot(data, aes(x = factor(Grade), y = mutation_count, fill = Grade)) +
+  geom_boxplot() +
+  labs(title = "Mutation Count by Grade", x = "Grade", y = "Mutation Count") +
+  theme_minimal()
+```
+
+
+```{r}
+p <- ggplot(data, aes(x = factor(Race), y = mutation_count, fill = Race)) +
+  geom_boxplot() +
+  labs(title = "Mutation Count by Race", x = "Race", y = "Mutation Count") +
+  theme_minimal()
+ggplotly(p)
+
+```
+
+
+## Heatmap of Mutations Across Patients
+
+```{r}
+library(GGally)
+
+# Pair plot with key variables
+ggpairs(data, columns = c("Age_at_diagnosis", "mutation_count", "Grade"))
+
+```
+
+
+```{r}
+
+ggplot(data, aes(x = factor(Grade), y = Age_at_diagnosis, fill = Grade)) +
+  geom_violin() +
+  labs(title = "Violin Plot of Age vs Grade", x = "Grade", y = "Age at Diagnosis") +
+  theme_minimal()
+
+```
+
+```{r}
+# Create a new data frame for mutational burden
+mutation_burden <- data %>%
+  group_by(Grade) %>%
+  summarise(mutation_count = sum(mutation_count))
+
+# Stacked bar chart for mutational burden by Grade
+ggplot(mutation_burden, aes(x = factor(Grade), y = mutation_count, fill = factor(Grade))) +
+  geom_bar(stat = "identity") +
+  labs(title = "Mutational Burden by Grade", x = "Grade", y = "Total Mutation Count") +
+  theme_minimal()
+
+```
+
+```{r}
+# Create a grouped bar plot for gender and age groups
+ggplot(data, aes(x = Age_group, fill = Gender)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Comparison of Age Groups Across Gender", x = "Age Group", y = "Count") +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+library(ggridges)
+
+ggplot(data, aes(x = mutation_count, y = Grade, fill = Grade)) +
+  geom_density_ridges() +
+  labs(title = "Ridge Plot of Mutation Count by Grade", x = "Mutation Count", y = "Grade") +
+  theme_ridges()
+
+```
+
+
+```{r}
+ggplot(data, aes(x = Age_at_diagnosis)) +
+  geom_density(fill = "skyblue", alpha = 0.7) +
+  labs(title = "Density Plot of Age at Diagnosis", x = "Age at Diagnosis", y = "Density") +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+library(networkD3)
+
+nodes <- data.frame("name" = unique(c(data$Grade, data$Race)))
+links <- data.frame(source = match(data$Grade, nodes$name) - 1,
+                    target = match(data$Race, nodes$name) - 1,
+                    value = rep(1, nrow(data)))
+
+sankeyNetwork(Links = links, Nodes = nodes, Source = "source", Target = "target", Value = "value", NodeID = "name")
+
+```
+
+
+
+```{r}
+library(pheatmap)
+
+mutations <- data[, c("IDH1", "TP53", "ATRX", "PTEN", "EGFR", "CIC", "FUBP1", "RB1", "NOTCH1", "BCOR", "CSMD3", "SMARCA4", "GRIN2A", "IDH2", "FAT4", "PDGFRA")]
+pheatmap(cor(mutations), cluster_rows = TRUE, cluster_cols = TRUE)
+
+```
+
+
+
+
+
+```{r}
+library(GGally)
+ggparcoord(data, columns = 5:ncol(data), groupColumn = "Grade") +
+  scale_color_brewer(palette = "Set2") +
+  labs(title = "Parallel Coordinate Plot for Mutations and Grade")
+
+```
+
+
